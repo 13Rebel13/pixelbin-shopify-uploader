@@ -11,45 +11,38 @@ app.use(cors());
 
 const PIXELBIN_API_TOKEN  = process.env.PIXELBIN_API_TOKEN;
 const PIXELBIN_UPLOAD_DIR = process.env.PIXELBIN_UPLOAD_DIR;
-const PIXELBIN_PRESET     = process.env.PIXELBIN_PRESET; // e.g. "super_resolution"
+const PIXELBIN_PRESET     = process.env.PIXELBIN_PRESET; // ex. "super_resolution"
 
 app.post("/upload", upload.single("image"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "Aucune image envoyée." });
-  }
+  if (!req.file) return res.status(400).json({ error: "Aucune image envoyée." });
 
   try {
     const originalName = req.file.originalname;
     const basename     = originalName.replace(/\.\w+$/, "");
 
-    const formData = new FormData();
-    formData.append("file", req.file.buffer, {
-      filename:    originalName,
+    const form = new FormData();
+    form.append("file", req.file.buffer, {
+      filename: originalName,
       contentType: req.file.mimetype
     });
-    formData.append("path",   PIXELBIN_UPLOAD_DIR);
-    formData.append("name",   basename);
-    formData.append("preset", PIXELBIN_PRESET);
+    form.append("path",   PIXELBIN_UPLOAD_DIR);
+    form.append("name",   basename);
+    form.append("preset", PIXELBIN_PRESET);
 
-    const headers = formData.getHeaders();
+    const headers  = form.getHeaders();
     const response = await fetch("https://api.pixelbin.io/v2/upload", {
       method:  "POST",
       headers: { Authorization: `Bearer ${PIXELBIN_API_TOKEN}`, ...headers },
-      body: formData
+      body:    form
     });
-
-    const result = await response.json();
-    if (!response.ok || !result.url) {
-      console.error("❌ Erreur PixelBin:", result);
-      return res.status(500).json({ error: "Erreur PixelBin", details: result });
+    const json = await response.json();
+    if (!response.ok || !json.url) {
+      console.error("❌ Erreur PixelBin:", json);
+      return res.status(500).json({ error: "Erreur PixelBin", details: json });
     }
 
-    // Construire l'URL transformée à partir de l'original
-    const originalUrl    = result.url;
-    const transformedUrl = originalUrl.replace(
-      "/original/",
-      `/${PIXELBIN_PRESET}/`
-    );
+    const originalUrl    = json.url;
+    const transformedUrl = originalUrl.replace("/original/", `/${PIXELBIN_PRESET}/`);
 
     return res.json({ originalUrl, transformedUrl });
   } catch (err) {
@@ -59,6 +52,4 @@ app.post("/upload", upload.single("image"), async (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`));
