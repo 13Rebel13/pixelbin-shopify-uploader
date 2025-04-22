@@ -1,17 +1,25 @@
 require("dotenv").config();
 const express = require("express");
-const multer = require("multer");
-const cors = require("cors");
-const FormData = require("form-data");
-const fetch = require("node-fetch");
+const multer  = require("multer");
+const cors    = require("cors");
 
-const app = express();
+// SDK officiel PixelBin (gère l’upload, la signature, etc.) :contentReference[oaicite:0]{index=0}
+const { PixelbinConfig, PixelbinClient } = require("@pixelbin/admin");
+
+const app    = express();
 const upload = multer();
 app.use(cors());
 
-const PIXELBIN_API_TOKEN = process.env.PIXELBIN_API_TOKEN;
-const PIXELBIN_DATASET   = process.env.PIXELBIN_DATASET;
-const PIXELBIN_PRESET    = process.env.PIXELBIN_PRESET;
+const PIXELBIN_TOKEN      = process.env.PIXELBIN_API_KEY;
+const PIXELBIN_UPLOAD_DIR = process.env.PIXELBIN_UPLOAD_DIR;
+const PIXELBIN_DOMAIN     = process.env.PIXELBIN_DOMAIN || "https://api.pixelbin.io";
+
+// Configuration du client PixelBin
+const config   = new PixelbinConfig({
+  domain:    PIXELBIN_DOMAIN,
+  apiSecret: PIXELBIN_TOKEN,
+});
+const pixelbin = new PixelbinClient(config);
 
 app.post("/upload", upload.single("image"), async (req, res) => {
   if (!req.file) {
@@ -19,41 +27,34 @@ app.post("/upload", upload.single("image"), async (req, res) => {
   }
 
   try {
-    const formData = new FormData();
-    formData.append("file", req.file.buffer, {
-      filename:    req.file.originalname,
-      contentType: req.file.mimetype,
-    });
-    formData.append("path",   PIXELBIN_DATASET);
-    formData.append("preset", PIXELBIN_PRESET);
+    const buffer       = req.file.buffer;
+    const originalName = req.file.originalname;
+    // On extrait l'extension pour le format (png, jpg…)
+    const extMatch = originalName.match(/\.(\w+)$/);
+    const format   = extMatch ? extMatch[1] : undefined;
 
-    // ← Ajout : récupérer les headers multipart corrects
-    const formHeaders = formData.getHeaders();
-
-    const response = await fetch("https://api.pixelbin.io/v2/upload", {
-      method:  "POST",
-      headers: {
-        Authorization: `Bearer ${PIXELBIN_API_TOKEN}`,
-        ...formHeaders
-      },
-      body: formData,
+    // 🚀 Upload via le SDK, qui gère la signature et la fragmentation
+    const result = await pixelbin.uploader.upload({
+      file:             buffer,
+      name:             originalName,
+      path:             PIXELBIN_UPLOAD_DIR,
+      format:           format,
+      access:           "public-read",
+      overwrite:        false,
+      filenameOverride: false,
     });
 
-    const result = await response.json();
-    console.log("📦 Réponse complète Pixelbin :", result);
-
-    if (response.ok && result?.url) {
-      return res.json({ url: result.url });
-    } else {
-      return res.status(500).json({ error: "Erreur Pixelbin", details: result });
-    }
+    // On renvoie simplement l'URL générée
+    return res.json({ url: result.url });
   } catch (err) {
-    console.error("❌ Erreur serveur :", err);
-    return res.status(500).json({ error: "Erreur serveur", details: err.message });
+    console.error("❌ Erreur PixelBin :", err);
+    return res
+      .status(500)
+      .json({ error: "Erreur PixelBin", details: err.message });
   }
 });
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`🚀 Proxy Pixelbin actif sur le port ${PORT}`);
+  console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`);
 });
