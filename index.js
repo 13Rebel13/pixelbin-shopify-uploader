@@ -10,8 +10,8 @@ const upload = multer();
 app.use(cors());
 
 const PIXELBIN_API_TOKEN = process.env.PIXELBIN_API_TOKEN;
-const PIXELBIN_DATASET = process.env.PIXELBIN_DATASET;
-const PIXELBIN_PRESET = process.env.PIXELBIN_PRESET;
+const PIXELBIN_DATASET   = process.env.PIXELBIN_DATASET;
+const PIXELBIN_PRESET    = process.env.PIXELBIN_PRESET;
 
 app.post("/upload", upload.single("image"), async (req, res) => {
   if (!req.file) {
@@ -21,22 +21,26 @@ app.post("/upload", upload.single("image"), async (req, res) => {
   try {
     const formData = new FormData();
     formData.append("file", req.file.buffer, {
-      filename: req.file.originalname,
+      filename:    req.file.originalname,
       contentType: req.file.mimetype,
     });
-    formData.append("path", PIXELBIN_DATASET);
+    formData.append("path",   PIXELBIN_DATASET);
     formData.append("preset", PIXELBIN_PRESET);
 
+    // ← Ajout : récupérer les headers multipart corrects
+    const formHeaders = formData.getHeaders();
+
     const response = await fetch("https://api.pixelbin.io/v2/upload", {
-      method: "POST",
+      method:  "POST",
       headers: {
         Authorization: `Bearer ${PIXELBIN_API_TOKEN}`,
+        ...formHeaders
       },
       body: formData,
     });
 
     const result = await response.json();
-    console.log("📦 Réponse complète Pixelbin :", result);
+    console.log("📦 Réponse complète Pixelbin :", result);
 
     if (response.ok && result?.url) {
       return res.json({ url: result.url });
@@ -44,7 +48,7 @@ app.post("/upload", upload.single("image"), async (req, res) => {
       return res.status(500).json({ error: "Erreur Pixelbin", details: result });
     }
   } catch (err) {
-    console.error("❌ Erreur serveur :", err);
+    console.error("❌ Erreur serveur :", err);
     return res.status(500).json({ error: "Erreur serveur", details: err.message });
   }
 });
