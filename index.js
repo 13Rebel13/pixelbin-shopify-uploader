@@ -1,66 +1,57 @@
-// index.js
-
-require("dotenv").config();
 const express = require("express");
 const multer = require("multer");
+const fetch = require("node-fetch");
 const cors = require("cors");
-const fs = require("fs");
-const path = require("path");
-const axios = require("axios");
+const FormData = require("form-data");
+require("dotenv").config();
 
 const app = express();
-const upload = multer({ dest: "uploads/" });
+const upload = multer();
+app.use(cors());
 
-app.use(cors()); // Autorise toutes les origines — tu peux restreindre à Shopify si besoin
-app.use(express.json());
+// Configuration depuis les variables d'environnement (.env)
+const PIXELBIN_API_TOKEN = process.env.PIXELBIN_API_TOKEN;
+const PIXELBIN_PATH = "shopify-uploads"; // Le nom de ton dossier sur Pixelbin
+const PIXELBIN_PRESET = "super_resolution"; // Vérifie le nom exact du preset sur Pixelbin
 
-// Pixelbin settings depuis .env
-const PIXELBIN_API_KEY = process.env.PIXELBIN_API_KEY;
-const PIXELBIN_CLOUDNAME = process.env.PIXELBIN_CLOUDNAME;
-const PIXELBIN_ZONE = process.env.PIXELBIN_ZONE || "default";
-const PIXELBIN_UPLOAD_DIR = process.env.PIXELBIN_UPLOAD_DIR || "shopify-uploads";
-
-// 📤 Upload endpoint
 app.post("/upload", upload.single("image"), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "Aucune image envoyée." });
+  }
+
   try {
-    const filePath = req.file.path;
-    const fileName = req.file.originalname;
-
     const formData = new FormData();
-    formData.append("file", fs.createReadStream(filePath));
-    formData.append("path", `${PIXELBIN_UPLOAD_DIR}/${fileName}`);
-
-    const response = await axios.post(
-      `https://api.pixelbin.io/v2/upload`,
-      formData,
-      {
-        headers: {
-          ...formData.getHeaders(),
-          "Authorization": `APIKEY ${PIXELBIN_API_KEY}`,
-        },
-        params: {
-          cloudName: PIXELBIN_CLOUDNAME,
-          zone: PIXELBIN_ZONE,
-        },
-      }
-    );
-
-    // Supprimer le fichier temporaire local
-    fs.unlinkSync(filePath);
-
-    return res.status(200).json({ success: true, data: response.data });
-  } catch (error) {
-    console.error("❌ Erreur upload :", error?.response?.data || error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Erreur lors du téléversement",
-      details: error?.response?.data || error.message,
+    formData.append("file", req.file.buffer, {
+      filename: req.file.originalname,
+      contentType: req.file.mimetype,
     });
+    formData.append("path", PIXELBIN_PATH);
+    formData.append("preset", PIXELBIN_PRESET);
+
+    const response = await fetch("https://api.pixelbin.io/v2/upload", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${PIXELBIN_API_TOKEN}`,
+      },
+      body: formData,
+    });
+
+    const result = await response.json();
+
+    console.log("📦 Réponse Pixelbin :", result);
+
+    if (response.ok && result.url) {
+      return res.json({ url: result.url });
+    } else {
+      return res.status(500).json({ error: "Erreur Pixelbin", details: result });
+    }
+  } catch (error) {
+    console.error("❌ Erreur serveur :", error);
+    return res.status(500).json({ error: "Erreur serveur", details: error.message });
   }
 });
 
-// 🎉 Lancement du serveur
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`🚀 Serveur Pixelbin actif sur http://localhost:${PORT}`);
+  console.log(`🚀 Serveur Pixelbin en ligne sur le port ${PORT}`);
 });
