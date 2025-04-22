@@ -2,22 +2,27 @@ require("dotenv").config();
 const express      = require("express");
 const multer       = require("multer");
 const cors         = require("cors");
+const { Readable } = require("stream");
 const { PixelbinConfig, PixelbinClient, url: PixelbinUrl } = require("@pixelbin/admin");
 
 const app    = express();
 const upload = multer();
 app.use(cors());
 
-// 🚩 Tes variables d'env
+// Variables d'environnement
 const {
-  PIXELBIN_API_TOKEN,     // Server-Side API Key
-  PIXELBIN_CLOUD_NAME,    // ex. "black-dawn-dff45b"
-  PIXELBIN_ZONE_SLUG,     // ta zone, ou vide pour default
-  PIXELBIN_UPLOAD_DIR,    // ex. "shopify-uploads"
-  PIXELBIN_PRESET         // ex. "super_resolution"
+  PIXELBIN_API_TOKEN,
+  PIXELBIN_CLOUD_NAME,
+  PIXELBIN_ZONE_SLUG,
+  PIXELBIN_UPLOAD_DIR,
+  PIXELBIN_PRESET      // ex. "super_resolution" ou le plugin sr
 } = process.env;
 
-// Config du client (on n'a plus besoin de zoneSlug pour l'upload)
+// Debug
+console.log("🔑 Token:", PIXELBIN_API_TOKEN?.slice(0,8));
+console.log("☁️ Cloud:", PIXELBIN_CLOUD_NAME);
+console.log("🏷 Preset:", PIXELBIN_PRESET);
+
 const config = new PixelbinConfig({
   domain:    "https://api.pixelbin.io",
   cloudName: PIXELBIN_CLOUD_NAME,
@@ -26,28 +31,26 @@ const config = new PixelbinConfig({
 const pixelbin = new PixelbinClient(config);
 
 app.post("/upload", upload.single("image"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "Aucune image envoyée." });
-  }
+  if (!req.file) return res.status(400).json({ error: "Aucune image envoyée." });
 
   try {
-    // 1) Upload l'image brute
     const buffer       = req.file.buffer;
     const originalName = req.file.originalname;
     const basename     = originalName.replace(/\.\w+$/, "");
     const extMatch     = originalName.match(/\.(\w+)$/);
     const format       = extMatch ? extMatch[1] : undefined;
 
-    const result = await pixelbin.assets.fileUpload({
-      file:       Buffer.from(buffer),
-      name:       basename,
-      path:       PIXELBIN_UPLOAD_DIR,
-      overwrite:  true
+    // 1) Upload du fichier brut
+    const upResult = await pixelbin.assets.fileUpload({
+      file:             Readable.from(buffer),
+      name:             basename,
+      options:          { originalFilename: originalName },
+      path:             PIXELBIN_UPLOAD_DIR,
+      overwrite:        true,
     });
+    const originalUrl = upResult.url; // ex. ".../original/basename.png"
 
-    const originalUrl = result.url; // ex. ".../original/basename.png"
-
-    // 2) Construis l'URL upscalée avec le preset ML (plugin "sr", transformation "upscale") :contentReference[oaicite:0]{index=0}
+    // 2) Génération de l'URL transformée
     const transformedUrl = PixelbinUrl.objToUrl({
       cloudName:      PIXELBIN_CLOUD_NAME,
       zone:           PIXELBIN_ZONE_SLUG || PIXELBIN_CLOUD_NAME,
@@ -55,20 +58,17 @@ app.post("/upload", upload.single("image"), async (req, res) => {
       baseUrl:        "https://cdn.pixelbin.io",
       filePath:       `${PIXELBIN_UPLOAD_DIR}/${basename}.${format}`,
       transformations: [
-        { plugin: "sr", name: "upscale" }
+        // si ton preset est ML, par exemple super_resolution
+        { plugin: PIXELBIN_PRESET, name: "upscale" }
       ]
     });
 
     return res.json({ originalUrl, transformedUrl });
   } catch (err) {
     console.error("❌ Erreur PixelBin :", err);
-    return res
-      .status(500)
-      .json({ error: "Erreur PixelBin", details: err.message || err });
+    return res.status(500).json({ error: "Erreur PixelBin", details: err.message || err });
   }
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () =>
-  console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`)
-);
+app.listen(PORT, () => console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`));
