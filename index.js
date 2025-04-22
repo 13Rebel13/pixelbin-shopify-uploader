@@ -1,60 +1,59 @@
 require("dotenv").config();
-const express  = require("express");
-const multer   = require("multer");
-const cors     = require("cors");
-const { PixelbinConfig, PixelbinClient } = require("@pixelbin/admin");
-
-// Debug variables d'environnement
-console.log("🔑 PIXELBIN_API_TOKEN starts with:", process.env.PIXELBIN_API_TOKEN?.slice(0,8));
-console.log("☁️ PIXELBIN_CLOUD_NAME:", process.env.PIXELBIN_CLOUD_NAME);
-console.log("🏷 PIXELBIN_ZONE_SLUG:", process.env.PIXELBIN_ZONE_SLUG);
+const express = require("express");
+const multer  = require("multer");
+const cors    = require("cors");
+const FormData = require("form-data");
+const fetch   = require("node-fetch");
 
 const app    = express();
 const upload = multer();
 app.use(cors());
 
-const {
-  PIXELBIN_API_TOKEN,
-  PIXELBIN_CLOUD_NAME,
-  PIXELBIN_ZONE_SLUG,
-  PIXELBIN_UPLOAD_DIR,
-  PIXELBIN_DOMAIN = "https://api.pixelbin.io"
-} = process.env;
-
-// Construire la config SDK en incluant la zone seulement si définie
-const configObj = {
-  domain:    PIXELBIN_DOMAIN,
-  cloudName: PIXELBIN_CLOUD_NAME,
-  apiSecret: PIXELBIN_API_TOKEN,
-};
-if (PIXELBIN_ZONE_SLUG) {
-  configObj.zoneSlug = PIXELBIN_ZONE_SLUG;
-}
-const config   = new PixelbinConfig(configObj);
-const pixelbin = new PixelbinClient(config);
+const PIXELBIN_API_TOKEN  = process.env.PIXELBIN_API_TOKEN;
+const PIXELBIN_UPLOAD_DIR = process.env.PIXELBIN_UPLOAD_DIR;
+const PIXELBIN_PRESET     = process.env.PIXELBIN_PRESET;
 
 app.post("/upload", upload.single("image"), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "Aucune image envoyée." });
+  if (!req.file) {
+    return res.status(400).json({ error: "Aucune image envoyée." });
+  }
   try {
-    const buffer       = req.file.buffer;
-    const basename     = req.file.originalname.replace(/\.\w+$/, "");
-    const extMatch     = req.file.originalname.match(/\.(\w+)$/);
-    const format       = extMatch ? extMatch[1] : undefined;
-
-    const result = await pixelbin.uploader.upload({
-      file:      buffer,
-      name:      basename,
-      path:      PIXELBIN_UPLOAD_DIR,
-      format,
-      access:    "public-read",
-      overwrite: true,
+    // Préparer le FormData pour l’upload
+    const formData = new FormData();
+    formData.append("file", req.file.buffer, {
+      filename:    req.file.originalname,
+      contentType: req.file.mimetype
     });
-    return res.json({ url: result.url });
+    formData.append("path",   PIXELBIN_UPLOAD_DIR);
+    formData.append("preset", PIXELBIN_PRESET);
+
+    // Récupérer les headers multipart (inclut boundary)
+    const formHeaders = formData.getHeaders();
+
+    // Appel direct à l’API public de PixelBin
+    const response = await fetch("https://api.pixelbin.io/v2/upload", {
+      method:  "POST",
+      headers: {
+        Authorization: `Bearer ${PIXELBIN_API_TOKEN}`,
+        ...formHeaders
+      },
+      body: formData
+    });
+
+    const result = await response.json();
+    if (response.ok && result.url) {
+      return res.json({ url: result.url });
+    } else {
+      console.error("❌ Erreur PixelBin:", result);
+      return res.status(500).json({ error: "Erreur PixelBin", details: result });
+    }
   } catch (err) {
-    console.error("❌ Erreur PixelBin :", err.message || err);
-    return res.status(500).json({ error: "Erreur PixelBin", details: err.message || err });
+    console.error("❌ Erreur serveur:", err);
+    return res.status(500).json({ error: "Erreur serveur", details: err.message });
   }
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`);
+});
