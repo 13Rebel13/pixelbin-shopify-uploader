@@ -43,8 +43,8 @@ app.post("/upload", upload.single("image"), async (req, res) => {
 
     const originalUrl    = json.url;
     const transformedUrl = originalUrl.replace("/original/", `/${PIXELBIN_PRESET}/`);
-
     return res.json({ originalUrl, transformedUrl });
+
   } catch (err) {
     console.error("❌ Erreur serveur:", err);
     return res.status(500).json({ error: "Erreur serveur", details: err.message });
