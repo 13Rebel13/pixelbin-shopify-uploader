@@ -4,7 +4,7 @@ const multer   = require("multer");
 const cors     = require("cors");
 const { PixelbinConfig, PixelbinClient } = require("@pixelbin/admin");
 
-// Charger et afficher les vars d'env pour debug
+// Debug variables d'environnement
 console.log("🔑 PIXELBIN_API_TOKEN starts with:", process.env.PIXELBIN_API_TOKEN?.slice(0,8));
 console.log("☁️ PIXELBIN_CLOUD_NAME:", process.env.PIXELBIN_CLOUD_NAME);
 console.log("🏷 PIXELBIN_ZONE_SLUG:", process.env.PIXELBIN_ZONE_SLUG);
@@ -13,18 +13,24 @@ const app    = express();
 const upload = multer();
 app.use(cors());
 
-const PIXELBIN_API_TOKEN   = process.env.PIXELBIN_API_TOKEN;
-const PIXELBIN_CLOUD_NAME  = process.env.PIXELBIN_CLOUD_NAME;
-const PIXELBIN_ZONE_SLUG   = process.env.PIXELBIN_ZONE_SLUG;
-const PIXELBIN_UPLOAD_DIR  = process.env.PIXELBIN_UPLOAD_DIR;
-const PIXELBIN_DOMAIN      = process.env.PIXELBIN_DOMAIN || "https://api.pixelbin.io";
+const {
+  PIXELBIN_API_TOKEN,
+  PIXELBIN_CLOUD_NAME,
+  PIXELBIN_ZONE_SLUG,
+  PIXELBIN_UPLOAD_DIR,
+  PIXELBIN_DOMAIN = "https://api.pixelbin.io"
+} = process.env;
 
-const config = new PixelbinConfig({
+// Construire la config SDK en incluant la zone seulement si définie
+const configObj = {
   domain:    PIXELBIN_DOMAIN,
   cloudName: PIXELBIN_CLOUD_NAME,
-  zoneSlug:  PIXELBIN_ZONE_SLUG,
   apiSecret: PIXELBIN_API_TOKEN,
-});
+};
+if (PIXELBIN_ZONE_SLUG) {
+  configObj.zoneSlug = PIXELBIN_ZONE_SLUG;
+}
+const config   = new PixelbinConfig(configObj);
 const pixelbin = new PixelbinClient(config);
 
 app.post("/upload", upload.single("image"), async (req, res) => {
@@ -39,7 +45,7 @@ app.post("/upload", upload.single("image"), async (req, res) => {
       file:      buffer,
       name:      basename,
       path:      PIXELBIN_UPLOAD_DIR,
-      format:    format,
+      format,
       access:    "public-read",
       overwrite: true,
     });
@@ -51,4 +57,4 @@ app.post("/upload", upload.single("image"), async (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🚀 Proxy PixelBin sur port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`));
