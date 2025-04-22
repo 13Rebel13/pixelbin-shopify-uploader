@@ -8,12 +8,11 @@ const app    = express();
 const upload = multer();
 app.use(cors());
 
-// ⚠️ On récupère bien PIXELBIN_API_TOKEN depuis Render
 const PIXELBIN_API_TOKEN  = process.env.PIXELBIN_API_TOKEN;
 const PIXELBIN_UPLOAD_DIR = process.env.PIXELBIN_UPLOAD_DIR;
 const PIXELBIN_DOMAIN     = process.env.PIXELBIN_DOMAIN || "https://api.pixelbin.io";
 
-// Log pour debug – on affiche seulement les 8 premiers caractères
+// Debug key
 console.log("🔑 PIXELBIN_API_TOKEN starts with:", PIXELBIN_API_TOKEN?.slice(0, 8));
 
 const config   = new PixelbinConfig({
@@ -33,12 +32,14 @@ app.post("/upload", upload.single("image"), async (req, res) => {
     const extMatch     = originalName.match(/\.(\w+)$/);
     const format       = extMatch ? extMatch[1] : undefined;
 
+    // ← ICI on active overwrite pour écraser l'ancien fichier
     const result = await pixelbin.uploader.upload({
-      file:     buffer,
-      name:     originalName,
-      path:     PIXELBIN_UPLOAD_DIR,
-      format:   format,
-      access:   "public-read",
+      file:      buffer,
+      name:      originalName,
+      path:      PIXELBIN_UPLOAD_DIR,
+      format:    format,
+      access:    "public-read",
+      overwrite: true,            // ← flag overwrite activé
     });
 
     return res.json({ url: result.url });
