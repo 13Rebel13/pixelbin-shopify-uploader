@@ -1,0 +1,31 @@
+# 🧪 Environnement
+.env
+.env.local
+.env.*.local
+
+# 🧱 Dépendances
+node_modules/
+
+# 🛠️ Build
+dist/
+build/
+
+# 💻 IDEs / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ⚙️ Logs / erreurs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ⚡ Rendu automatique (Render / Vercel / Netlify)
+.vercel/
+.netlify/
+output.log
+
+# 🔧 Autres
+*.tgz
+*.log
