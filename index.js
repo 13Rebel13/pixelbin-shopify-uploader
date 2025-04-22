@@ -1,9 +1,9 @@
 require("dotenv").config();
-const express = require("express");
-const multer  = require("multer");
-const cors    = require("cors");
+const express  = require("express");
+const multer   = require("multer");
+const cors     = require("cors");
 const FormData = require("form-data");
-const fetch   = require("node-fetch");
+const fetch    = require("node-fetch");
 
 const app    = express();
 const upload = multer();
@@ -17,20 +17,21 @@ app.post("/upload", upload.single("image"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "Aucune image envoyée." });
   }
+
   try {
-    // Préparer le FormData pour l’upload
+    const originalName = req.file.originalname;
+    const basename     = originalName.replace(/\.\w+$/, "");
+
     const formData = new FormData();
     formData.append("file", req.file.buffer, {
-      filename:    req.file.originalname,
+      filename:    originalName,
       contentType: req.file.mimetype
     });
     formData.append("path",   PIXELBIN_UPLOAD_DIR);
+    formData.append("name",   basename);              // ← on ajoute le nom du fichier
     formData.append("preset", PIXELBIN_PRESET);
 
-    // Récupérer les headers multipart (inclut boundary)
     const formHeaders = formData.getHeaders();
-
-    // Appel direct à l’API public de PixelBin
     const response = await fetch("https://api.pixelbin.io/v2/upload", {
       method:  "POST",
       headers: {
