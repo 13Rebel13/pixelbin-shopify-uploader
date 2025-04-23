@@ -40,35 +40,4 @@ const { buffer, originalname } = req.file;
 const basename = originalname.replace(/\.\w+$/, "");
 const extMatch = originalname.match(/\.(\w+)$/);
 const format   = extMatch ? extMatch[1] : "png";
-
-```
-// Upload sans spécifier de dossier (path) pour tester
-const upResult = await pixelbin.uploader.upload({
-  file:      buffer,
-  name:      basename,
-  // path:      PIXELBIN_UPLOAD_DIR,   // ← désactivé pour test
-  format:    format,
-  access:    "public-read",
-  overwrite: true,
-});
-const originalUrl = upResult.url;
-// ex. <https://cdn.pixelbin.io/v2/black-dawn-dff45b/original/basename.png>
-
-// Construction de l’URL upscalée ×4
-const transformSeg   = `/sr.upscale(t:4x)/`;
-const transformedUrl = originalUrl.replace("/original/", transformSeg);
-
-return res.json({ originalUrl, transformedUrl });
-
-```
-
-} catch (err) {
-console.error("❌ Erreur PixelBin :", err);
-return res.status(500).json({ error: "PixelBin", details: err.message });
-}
-});
-
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`);
-});
+  
