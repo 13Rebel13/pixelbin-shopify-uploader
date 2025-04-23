@@ -8,15 +8,14 @@ const app    = express();
 const upload = multer();
 app.use(cors());
 
-// Tes variables d’environnement
+// Variables d’environnement (vérifie qu’elles sont bien définies sur Render)
 const {
   PIXELBIN_API_TOKEN,    // ta Server-Side API Key
   PIXELBIN_CLOUD_NAME,   // ex. "black-dawn-dff45b"
-  PIXELBIN_UPLOAD_DIR,   // ex. "shopify-uploads"
-  PIXELBIN_PRESET        // ex. "sr" pour super-resolution
+  PIXELBIN_UPLOAD_DIR    // ex. "shopify-uploads"
 } = process.env;
 
-// Init PixelBin
+// Initialise le client PixelBin
 const config   = new PixelbinConfig({
   domain:    "https://api.pixelbin.io",
   cloudName: PIXELBIN_CLOUD_NAME,
@@ -45,28 +44,34 @@ app.post("/upload", upload.single("image"), async (req, res) => {
       access:    "public-read",
       overwrite: true,
     });
-    const originalUrl = upResult.url;  
+    const originalUrl = upResult.url;
     // ex. https://cdn.pixelbin.io/v2/black-dawn-dff45b/original/basename.png
 
-    // 2) Génération de l’URL upscalée via preset ML
+    // 2) Génère l’URL upscalée ×4 via sr.upscale(t:4x)
     const transformedUrl = PixelbinUrl.objToUrl({
       cloudName: PIXELBIN_CLOUD_NAME,
       version:   "v2",
       baseUrl:   "https://cdn.pixelbin.io",
       filePath:  `${PIXELBIN_UPLOAD_DIR}/${basename}.${format}`,
       transformations: [
-        { plugin: PIXELBIN_PRESET, name: "upscale" }
+        {
+          plugin: "sr",
+          name:   "upscale",
+          values: { t: "4x" }
+        }
       ]
     });
 
     return res.json({ originalUrl, transformedUrl });
   } catch (err) {
     console.error("❌ Erreur PixelBin :", err);
-    return res.status(500).json({ error: "Erreur PixelBin", details: err.message || err });
+    return res
+      .status(500)
+      .json({ error: "Erreur PixelBin", details: err.message || err });
   }
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`);
-});
+app.listen(PORT, () =>
+  console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`)
+);
