@@ -8,14 +8,14 @@ const app    = express();
 const upload = multer();
 app.use(cors());
 
-// Tes variables d’environnement configurées sur Render
+// Tes vars d’environnement
 const {
-  PIXELBIN_API_TOKEN,  // Server-Side API Key
-  PIXELBIN_CLOUD_NAME, // ex. "black-dawn-dff45b"
-  PIXELBIN_UPLOAD_DIR  // ex. "shopify-uploads"
+  PIXELBIN_API_TOKEN,
+  PIXELBIN_CLOUD_NAME,
+  PIXELBIN_UPLOAD_DIR
 } = process.env;
 
-// Initialise le client PixelBin
+// Init PixelBin
 const config   = new PixelbinConfig({
   domain:    "https://api.pixelbin.io",
   cloudName: PIXELBIN_CLOUD_NAME,
@@ -29,7 +29,7 @@ app.post("/upload", upload.single("image"), async (req, res) => {
   }
 
   try {
-    // 1) Upload du fichier brut
+    // 1) upload de l'image brute
     const { buffer, originalname } = req.file;
     const basename = originalname.replace(/\.\w+$/, "");
     const extMatch = originalname.match(/\.(\w+)$/);
@@ -44,11 +44,11 @@ app.post("/upload", upload.single("image"), async (req, res) => {
       overwrite: true,
     });
     const originalUrl = upResult.url;
-    // ex. https://cdn.pixelbin.io/v2/black-dawn-dff45b/original/basename.png
 
-    // 2) Génération de l’URL upscalée ×4
+    // 2) génération de l'URL upscalée ×4
     const transformedUrl = PixelbinUrl.objToUrl({
       cloudName: PIXELBIN_CLOUD_NAME,
+      zone:      PIXELBIN_CLOUD_NAME,         // ← on passe bien la zone
       version:   "v2",
       baseUrl:   "https://cdn.pixelbin.io",
       filePath:  `${PIXELBIN_UPLOAD_DIR}/${basename}.${format}`,
@@ -56,9 +56,7 @@ app.post("/upload", upload.single("image"), async (req, res) => {
         {
           plugin: "sr",
           name:   "upscale",
-          values: [
-            { key: "t", value: "4x" }
-          ]
+          values: [{ key: "t", value: "4x" }]
         }
       ]
     });
