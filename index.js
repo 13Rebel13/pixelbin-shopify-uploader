@@ -1,63 +1,111 @@
-require("dotenv").config();
-const express  = require("express");
-const multer   = require("multer");
-const cors     = require("cors");
-const FormData = require("form-data");
-const fetch    = require("node-fetch");
-
-const app    = express();
-const upload = multer();
-app.use(cors());
-
-const {
-  PIXELBIN_API_TOKEN,
-  PIXELBIN_CLOUD_NAME,
-  PIXELBIN_UPLOAD_DIR,
-  PIXELBIN_PRESET      // ← assure-toi que c’est bien défini
-} = process.env;
-
-app.post("/upload", upload.single("image"), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "Aucune image envoyée." });
-
-  try {
-    const { buffer, originalname, mimetype } = req.file;
-    const basename = originalname
-      .replace(/\s+/g, "_")
-      .replace(/\.\w+$/, "");
-
-    const form = new FormData();
-    form.append("file", buffer, {
-      filename: basename,
-      contentType: mimetype
-    });
-    form.append("path",   PIXELBIN_UPLOAD_DIR);
-    form.append("name",   basename);
-    form.append("preset", PIXELBIN_PRESET);
-
-    const headers = form.getHeaders();
-    headers.Authorization = `Bearer ${PIXELBIN_API_TOKEN}`;
-
-    const apiRes = await fetch("https://api.pixelbin.io/v2/upload", {
-      method: "POST",
-      headers,
-      body: form
-    });
-    const json = await apiRes.json();
-    if (!apiRes.ok || !json.url) {
-      console.error("❌ PixelBin error:", json);
-      return res.status(500).json({ error: "Erreur PixelBin", details: json });
-    }
-
-    const originalUrl    = json.url;
-    // remplace /original/ par /<preset>/ pour récupérer la version transformée
-    const transformedUrl = originalUrl.replace("/original/", `/${PIXELBIN_PRESET}/`);
-
-    return res.json({ originalUrl, transformedUrl });
-  } catch (err) {
-    console.error("❌ Serveur error:", err);
-    return res.status(500).json({ error: "Erreur serveur", details: err.message });
+<style>
+  #pixelbin-container { max-width:600px; margin:40px auto; text-align:center; }
+  #pixelbin-actions { margin-bottom:24px; }
+  #uploadBtn {
+    background:#007bff;color:#fff;border:none;padding:8px 16px;
+    border-radius:4px;cursor:pointer;margin-left:8px;
   }
-});
+  #uploadBtn:disabled { opacity:0.6; cursor:not-allowed; }
+  #pixelbin-result {
+    display:flex;justify-content:space-around;flex-wrap:wrap;gap:20px;
+    margin-top:20px;
+  }
+  #pixelbin-result div { width:45%; }
+  #pixelbin-result img {
+    max-width:100%;border:1px solid #ddd;border-radius:4px;
+  }
+  #downloadBtn {
+    display:inline-block;margin-top:8px;
+    background:#28a745;color:#fff;padding:6px 12px;
+    border-radius:4px;text-decoration:none;cursor:pointer;
+  }
+  .spinner {
+    border:4px solid rgba(0,0,0,0.1);width:24px;height:24px;
+    border-radius:50%;border-left-color:#000;
+    animation:spin 1s linear infinite;display:inline-block;
+    vertical-align:middle;margin-right:8px;
+  }
+  @keyframes spin { to { transform:rotate(360deg) } }
+</style>
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`));
+<div id="pixelbin-container">
+  <div id="pixelbin-actions">
+    <input type="file" id="pixelbin-upload" accept="image/*">
+    <button id="uploadBtn">Améliorer l’image ×4</button>
+  </div>
+  <div id="pixelbin-result"></div>
+</div>
+
+<script>
+(function() {
+  const UPLOAD_URL = "https://pixelbin-shopify-uploader.onrender.com/upload";
+  const input      = document.getElementById("pixelbin-upload");
+  const btn        = document.getElementById("uploadBtn");
+  const result     = document.getElementById("pixelbin-result");
+
+  btn.addEventListener("click", async () => {
+    if (!input.files.length) return alert("Sélectionnez une image.");
+    const file = input.files[0];
+
+    // Preview locale
+    const reader = new FileReader();
+    reader.onload = () => {
+      result.innerHTML = `
+        <div>
+          <p>🖼️ Originale :</p>
+          <img src="${reader.result}" alt="Originale">
+        </div>`;
+    };
+    reader.readAsDataURL(file);
+
+    // Affichage spinner
+    btn.disabled = true;
+    btn.textContent = "";
+    const spinner = document.createElement("div");
+    spinner.className = "spinner";
+    btn.appendChild(spinner);
+
+    try {
+      // Envoi vers ton proxy
+      const form = new FormData();
+      form.append("image", file);
+      const resp = await fetch(UPLOAD_URL, { method: "POST", body: form });
+      const { originalUrl, transformedUrl } = await resp.json();
+
+      // Affichage de la version ×4
+      result.innerHTML += `
+        <div>
+          <p>✨ Upscalée ×4 :</p>
+          <img src="${transformedUrl}" alt="Upscalée">
+          <button id="downloadBtn">📥 Télécharger</button>
+        </div>`;
+
+      // Forcer le téléchargement en PNG
+      document.getElementById("downloadBtn").addEventListener("click", async () => {
+        try {
+          const url      = encodeURI(transformedUrl);
+          const r        = await fetch(url);
+          const blob     = await r.blob();
+          const filename = file.name.replace(/\.\w+$/, "") + ".png";
+          const blobUrl  = URL.createObjectURL(blob);
+          const a        = document.createElement("a");
+          a.href         = blobUrl;
+          a.download     = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(blobUrl);
+        } catch (e) {
+          alert("Erreur téléchargement : " + e.message);
+        }
+      });
+
+    } catch (err) {
+      alert("Erreur : " + err.message);
+    } finally {
+      btn.disabled   = false;
+      btn.textContent = "Améliorer l’image ×4";
+    }
+  });
+})();
+</script>
