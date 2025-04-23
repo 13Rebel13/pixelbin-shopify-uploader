@@ -8,11 +8,11 @@ const app    = express();
 const upload = multer();
 app.use(cors());
 
-// Variables d’environnement (vérifie qu’elles sont bien définies sur Render)
+// Tes variables d’environnement configurées sur Render
 const {
-  PIXELBIN_API_TOKEN,    // ta Server-Side API Key
-  PIXELBIN_CLOUD_NAME,   // ex. "black-dawn-dff45b"
-  PIXELBIN_UPLOAD_DIR    // ex. "shopify-uploads"
+  PIXELBIN_API_TOKEN,  // Server-Side API Key
+  PIXELBIN_CLOUD_NAME, // ex. "black-dawn-dff45b"
+  PIXELBIN_UPLOAD_DIR  // ex. "shopify-uploads"
 } = process.env;
 
 // Initialise le client PixelBin
@@ -30,11 +30,10 @@ app.post("/upload", upload.single("image"), async (req, res) => {
 
   try {
     // 1) Upload du fichier brut
-    const buffer       = req.file.buffer;
-    const originalName = req.file.originalname;
-    const basename     = originalName.replace(/\.\w+$/, "");
-    const extMatch     = originalName.match(/\.(\w+)$/);
-    const format       = extMatch ? extMatch[1] : undefined;
+    const { buffer, originalname } = req.file;
+    const basename = originalname.replace(/\.\w+$/, "");
+    const extMatch = originalname.match(/\.(\w+)$/);
+    const format   = extMatch ? extMatch[1] : undefined;
 
     const upResult = await pixelbin.uploader.upload({
       file:      buffer,
@@ -47,7 +46,7 @@ app.post("/upload", upload.single("image"), async (req, res) => {
     const originalUrl = upResult.url;
     // ex. https://cdn.pixelbin.io/v2/black-dawn-dff45b/original/basename.png
 
-    // 2) Génère l’URL upscalée ×4 via sr.upscale(t:4x)
+    // 2) Génération de l’URL upscalée ×4
     const transformedUrl = PixelbinUrl.objToUrl({
       cloudName: PIXELBIN_CLOUD_NAME,
       version:   "v2",
@@ -57,7 +56,9 @@ app.post("/upload", upload.single("image"), async (req, res) => {
         {
           plugin: "sr",
           name:   "upscale",
-          values: { t: "4x" }
+          values: [
+            { key: "t", value: "4x" }
+          ]
         }
       ]
     });
