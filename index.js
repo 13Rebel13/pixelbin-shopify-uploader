@@ -1,8 +1,8 @@
 require("dotenv").config();
-const express  = require("express");
-const multer   = require("multer");
-const cors     = require("cors");
-const { PixelbinConfig, PixelbinClient, url: PixelbinUrl } = require("@pixelbin/admin");
+const express      = require("express");
+const multer       = require("multer");
+const cors         = require("cors");
+const { PixelbinConfig, PixelbinClient } = require("@pixelbin/admin");
 
 const app    = express();
 const upload = multer();
@@ -10,19 +10,19 @@ app.use(cors());
 
 // Variables d’environnement
 const {
-  PIXELBIN_API_TOKEN,    // ta Server-Side API Key
-  PIXELBIN_CLOUD_NAME,   // ex. "black-dawn-dff45b"
-  PIXELBIN_ZONE_SLUG,    // ex. "default"
-  PIXELBIN_UPLOAD_DIR    // ex. "shopify-uploads"
+  PIXELBIN_API_TOKEN,
+  PIXELBIN_CLOUD_NAME,
+  PIXELBIN_ZONE_SLUG,
+  PIXELBIN_UPLOAD_DIR
 } = process.env;
 
 // Debug au démarrage
-console.log("🔑 Token starts with:", PIXELBIN_API_TOKEN?.slice(0,8));
-console.log("☁️ CloudName:", PIXELBIN_CLOUD_NAME);
+console.log("🔑 Token…", PIXELBIN_API_TOKEN?.slice(0,8));
+console.log("☁️ Cloud:", PIXELBIN_CLOUD_NAME);
 console.log("🏷 ZoneSlug:", PIXELBIN_ZONE_SLUG);
-console.log("📁 Upload Dir:", PIXELBIN_UPLOAD_DIR);
+console.log("📁 UploadDir:", PIXELBIN_UPLOAD_DIR);
 
-const config = new PixelbinConfig({
+const config   = new PixelbinConfig({
   domain:    "https://api.pixelbin.io",
   cloudName: PIXELBIN_CLOUD_NAME,
   zoneSlug:  PIXELBIN_ZONE_SLUG,
@@ -36,28 +36,31 @@ app.post("/upload", upload.single("image"), async (req, res) => {
   }
 
   try {
-    const { buffer, originalname } = req.file;
-    const basename = originalname.replace(/\.\w+$/, "");
-    const extMatch = originalname.match(/\.(\w+)$/);
-    const format   = extMatch ? extMatch[1] : "png";
+    const { buffer, originalname, mimetype } = req.file;
+    // 1) Construire un basename nettoyé
+    let base = originalname
+      .replace(/\s+/g, "_")           // espaces → underscores
+      .replace(/[^\w\-\.]/g, "")      // virer tout sauf alphanum, _, - et .
+      .replace(/\.\w+$/, "");         // ôter l’extension
 
-    // Upload sans spécifier de dossier (path) pour tester
+    // 2) Détecter l’extension
+    const ext = (originalname.match(/\.(\w+)$/) || [])[1] || mimetype.split("/")[1] || "png";
+
+    // 3) Ajouter un suffixe timestamp pour l’unicité
+    const uniqueName = `${base}-${Date.now()}`;
+
+    // 4) Upload via SDK
     const upResult = await pixelbin.uploader.upload({
       file:      buffer,
-      name:      basename,
-      // path:      PIXELBIN_UPLOAD_DIR,   // ← désactivé pour test
-      format:    format,
+      name:      uniqueName,
+      path:      PIXELBIN_UPLOAD_DIR,
+      format:    ext,
       access:    "public-read",
       overwrite: true,
     });
-    const originalUrl = upResult.url;
-    // ex. https://cdn.pixelbin.io/v2/black-dawn-dff45b/original/basename.png
 
-    // Construction de l’URL upscalée ×4
-    const transformSeg   = `/sr.upscale(t:4x)/`;
-    const transformedUrl = originalUrl.replace("/original/", transformSeg);
-
-    return res.json({ originalUrl, transformedUrl });
+    // 5) On renvoie l’URL finale
+    return res.json({ url: upResult.url });
   } catch (err) {
     console.error("❌ Erreur PixelBin :", err);
     return res.status(500).json({ error: "PixelBin", details: err.message });
@@ -65,6 +68,6 @@ app.post("/upload", upload.single("image"), async (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`);
-});
+app.listen(PORT, () =>
+  console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`)
+);
