@@ -1,111 +1,70 @@
-<style>
-  #pixelbin-container { max-width:600px; margin:40px auto; text-align:center; }
-  #pixelbin-actions { margin-bottom:24px; }
-  #uploadBtn {
-    background:#007bff;color:#fff;border:none;padding:8px 16px;
-    border-radius:4px;cursor:pointer;margin-left:8px;
+require("dotenv").config();
+const express  = require("express");
+const multer   = require("multer");
+const cors     = require("cors");
+const { PixelbinConfig, PixelbinClient, url: PixelbinUrl } = require("@pixelbin/admin");
+
+const app    = express();
+const upload = multer();
+app.use(cors());
+
+// Variables d’environnement
+const {
+  PIXELBIN_API_TOKEN,    // ta Server-Side API Key
+  PIXELBIN_CLOUD_NAME,   // ex. "black-dawn-dff45b"
+  PIXELBIN_ZONE_SLUG,    // ex. "default"
+  PIXELBIN_UPLOAD_DIR    // ex. "shopify-uploads"
+} = process.env;
+
+// Debug au démarrage
+console.log("🔑 Token starts with:", PIXELBIN_API_TOKEN?.slice(0,8));
+console.log("☁️ CloudName:", PIXELBIN_CLOUD_NAME);
+console.log("🏷 ZoneSlug:", PIXELBIN_ZONE_SLUG);
+console.log("📁 Upload Dir:", PIXELBIN_UPLOAD_DIR);
+
+const config = new PixelbinConfig({
+  domain:    "https://api.pixelbin.io",
+  cloudName: PIXELBIN_CLOUD_NAME,
+  zoneSlug:  PIXELBIN_ZONE_SLUG,
+  apiSecret: PIXELBIN_API_TOKEN,
+});
+const pixelbin = new PixelbinClient(config);
+
+app.post("/upload", upload.single("image"), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "Aucune image envoyée." });
   }
-  #uploadBtn:disabled { opacity:0.6; cursor:not-allowed; }
-  #pixelbin-result {
-    display:flex;justify-content:space-around;flex-wrap:wrap;gap:20px;
-    margin-top:20px;
+
+  try {
+    const { buffer, originalname } = req.file;
+    const basename = originalname.replace(/\.\w+$/, "");
+    const extMatch = originalname.match(/\.(\w+)$/);
+    const format   = extMatch ? extMatch[1] : "png";
+
+    // Upload sans spécifier de dossier (path) pour tester
+    const upResult = await pixelbin.uploader.upload({
+      file:      buffer,
+      name:      basename,
+      // path:      PIXELBIN_UPLOAD_DIR,   // ← désactivé pour test
+      format:    format,
+      access:    "public-read",
+      overwrite: true,
+    });
+    const originalUrl = upResult.url;
+    // ex. https://cdn.pixelbin.io/v2/black-dawn-dff45b/original/basename.png
+
+    // Construction de l’URL upscalée ×4
+    const transformSeg   = `/sr.upscale(t:4x)/`;
+    const transformedUrl = originalUrl.replace("/original/", transformSeg);
+
+    return res.json({ originalUrl, transformedUrl });
+  } catch (err) {
+    console.error("❌ Erreur PixelBin :", err);
+    return res.status(500).json({ error: "PixelBin", details: err.message });
   }
-  #pixelbin-result div { width:45%; }
-  #pixelbin-result img {
-    max-width:100%;border:1px solid #ddd;border-radius:4px;
-  }
-  #downloadBtn {
-    display:inline-block;margin-top:8px;
-    background:#28a745;color:#fff;padding:6px 12px;
-    border-radius:4px;text-decoration:none;cursor:pointer;
-  }
-  .spinner {
-    border:4px solid rgba(0,0,0,0.1);width:24px;height:24px;
-    border-radius:50%;border-left-color:#000;
-    animation:spin 1s linear infinite;display:inline-block;
-    vertical-align:middle;margin-right:8px;
-  }
-  @keyframes spin { to { transform:rotate(360deg) } }
-</style>
+});
 
-<div id="pixelbin-container">
-  <div id="pixelbin-actions">
-    <input type="file" id="pixelbin-upload" accept="image/*">
-    <button id="uploadBtn">Améliorer l’image ×4</button>
-  </div>
-  <div id="pixelbin-result"></div>
-</div>
-
-<script>
-(function() {
-  const UPLOAD_URL = "https://pixelbin-shopify-uploader.onrender.com/upload";
-  const input      = document.getElementById("pixelbin-upload");
-  const btn        = document.getElementById("uploadBtn");
-  const result     = document.getElementById("pixelbin-result");
-
-  btn.addEventListener("click", async () => {
-    if (!input.files.length) return alert("Sélectionnez une image.");
-    const file = input.files[0];
-
-    // Preview locale
-    const reader = new FileReader();
-    reader.onload = () => {
-      result.innerHTML = `
-        <div>
-          <p>🖼️ Originale :</p>
-          <img src="${reader.result}" alt="Originale">
-        </div>`;
-    };
-    reader.readAsDataURL(file);
-
-    // Affichage spinner
-    btn.disabled = true;
-    btn.textContent = "";
-    const spinner = document.createElement("div");
-    spinner.className = "spinner";
-    btn.appendChild(spinner);
-
-    try {
-      // Envoi vers ton proxy
-      const form = new FormData();
-      form.append("image", file);
-      const resp = await fetch(UPLOAD_URL, { method: "POST", body: form });
-      const { originalUrl, transformedUrl } = await resp.json();
-
-      // Affichage de la version ×4
-      result.innerHTML += `
-        <div>
-          <p>✨ Upscalée ×4 :</p>
-          <img src="${transformedUrl}" alt="Upscalée">
-          <button id="downloadBtn">📥 Télécharger</button>
-        </div>`;
-
-      // Forcer le téléchargement en PNG
-      document.getElementById("downloadBtn").addEventListener("click", async () => {
-        try {
-          const url      = encodeURI(transformedUrl);
-          const r        = await fetch(url);
-          const blob     = await r.blob();
-          const filename = file.name.replace(/\.\w+$/, "") + ".png";
-          const blobUrl  = URL.createObjectURL(blob);
-          const a        = document.createElement("a");
-          a.href         = blobUrl;
-          a.download     = filename;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          URL.revokeObjectURL(blobUrl);
-        } catch (e) {
-          alert("Erreur téléchargement : " + e.message);
-        }
-      });
-
-    } catch (err) {
-      alert("Erreur : " + err.message);
-    } finally {
-      btn.disabled   = false;
-      btn.textContent = "Améliorer l’image ×4";
-    }
-  });
-})();
-</script>
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`🚀 Proxy PixelBin démarré sur le port ${PORT}`);
+});
